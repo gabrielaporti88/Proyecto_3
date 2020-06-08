@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import pywt
 import scipy.signal as signal
+from scipy.stats import ttest_ind, mannwhitneyu
+import seaborn as sns 
 from linearFIR import filter_design, mfreqz
 from wavelet_filtering_29_5_18 import wthresh, thselect, wnoisest
 from IPython import get_ipython
@@ -46,32 +48,31 @@ def fil_Wavelet(signal):
     x_rec = x_rec[0:signal.shape[0]];  
 
     x_filt = np.squeeze(signal - x_rec);    # Se le resta a la señal original, la señal obtenida con wavelet
-    plt.plot(signal[0:1500],label='Original')
-    plt.plot(x_rec[0:1500],label='Umbralizada por Wavelet')
+    #plt.plot(signal[0:1500],label='Original')
+    #plt.plot(x_rec[0:1500],label='Umbralizada por Wavelet')
 
     
-    plt.plot(x_filt[0:1500],label='Original - Umbralizada')
-    plt.legend()    
+    #plt.plot(x_filt[0:1500],label='Original - Umbralizada')
+    #plt.legend()    
     
      
     return (x_filt)
 
 def preproces (signal, sro):
     
-    tiempo=np.arange(0, len(signal)/sro, 1/sro)     # Se crea vector de tiempo
+    
+    #tiempo=np.arange(0, len(signal)/sro, 1/sro)     # Se crea vector de tiempo
     
     senal_1= linealFir(signal, sro)     # se aplica el filtro lineal
     senal_2= fil_Wavelet(senal_1)       # Se aplica el filtro con wavelet
     
-    get_ipython().run_line_magic('matplotlib', 'qt')
-    plt.plot(tiempo, signal, label='Señal original' )
-    plt.plot(tiempo, senal_2, label='Señal filtrada')
-    plt.title('Pre procesamiento de la señal')
-    plt.xlabel('Tiempo (s)')
-    plt.ylabel('Amplitud ')
-    plt.legend()
-    
-    
+    #get_ipython().run_line_magic('matplotlib', 'qt')
+    #plt.plot(tiempo, signal, label='Señal original' )
+    #plt.plot(tiempo, senal_2, label='Señal filtrada')
+    #plt.title('Pre procesamiento de la señal')
+    #plt.xlabel('Tiempo (s)')
+    #plt.ylabel('Amplitud ')
+    #plt.legend()
     
     return (senal_2)
     
@@ -83,84 +84,63 @@ def carga (audio, texto):
     t=pd.DataFrame(columns=('No. ciclo','Inicio (muestra)', 'Fin (muestra)','Estertores', 'Sibilancias'))   # se crea un data frame, que contendrá la informacion del paciente
     
     for i in range (np.shape(txt)[0]):
-        ti= txt[i][0]*22050     # Inicio del ciclo dado en numero de muestra
-        tf= txt[i][1]*22050     # Fin del ciclo dado en numero de muestra
+        ti= txt[i][0]*sro     # Inicio del ciclo dado en numero de muestra
+        tf= txt[i][1]*sro     # Fin del ciclo dado en numero de muestra
         e= txt [i][2]           # estertores del paciente
         s= txt [i][3]           # Sibilancias del paciente
         t.loc[len(t)]=[i+1,ti,tf,e,s]   # Añade la informacion del paciente a un dataframe
                 
+    
+    return (t, yo, sro)
+    
+def segmento (senal, dataframe):   #recibe el t que retorna carga
     segmentos=[]
   
-    for i in range(np.shape(txt)[0]):     # Se corta la señal en ada ciclo segun su inicio y su fin
-        segmento=yo[int(t.loc[i][1]):int(t.loc[i][2])]
+    for i in range(np.shape(dataframe)[0]):     # Se corta la señal en ada ciclo segun su inicio y su fin
+        segmento=senal[int(dataframe.loc[i][1]):int(dataframe.loc[i][2])]
         segmentos.append(segmento)
     
     """for i in range (10):   # permite guardar un audio
         librosa.output.write_wav('audio'+str(i)+'.wav', segmentos[i], 22050)
     """
-    
-    return (t, segmentos)
-    
-    
+    return (segmentos)
 
 #%%
 # Procesamiento y extracción de características de la señal
-def indices (senal, dataframe, fs):
-    varianza= np.var(senal)
-    maximo= np.amax(senal)
-    minimo= np.amin(senal)
-    rango= abs(maximo-minimo)
+def indices (senal, fs):
+    
+    varianza= np.var(senal)    # Calculo de la varianza
+    maximo= np.amax(senal)     # calculo del valor máximo de la senal
+    minimo= np.amin(senal)     # Calculo del valor mínimo de la senal
+    rango= abs(maximo-minimo)  # Calculo del rango de la senal
     s=0
-    for i in range(len(senal)-1):    
+    for i in range(len(senal)-1):    # Calculo del promedio movil de la senal
         s= abs(senal[i]-senal[i+1]) + s
         
-    a= 0
-    b= 799
-    c= 100
-    sma_f=[]
     
-    while (b <= len(senal)):
-        sma=0
-        for i in range(800):
-            sma= abs(senal[i+a]-senal[i+1+a]) + sma
-        
-        a= a+c
-        b= b+c
-        sma_f.append(sma)
-    print (a,b)
-    sma=0
-    #for i in senal[a:len(senal)-2]:
-    #    for j in senal[a+1:len(senal)-1]:
-    #       sma= abs(i-j) + sma
-            
-    #sma_f.append(sma)
-    for i in range (a, len(senal)-1):
-        sma= abs(senal[i]- senal[i+1])+ sma
     
-    sma_f.append(sma)
+    f, Pxx = signal.welch(senal ,fs,'hamming', 1024, 419,1024, scaling='density', return_onesided= False);
+    spectrum=np.mean(Pxx)      # Calculo del promedio del espectro de la senal
     
-    sma_fine=np.amax(sma_f)
-    
-    f, Pxx = signal.welch(senal ,fs,'hamming', 1048, 419,1048, scaling='density', return_onesided= False);
-    spectrum=np.mean(Pxx)
-    
-    return (varianza, rango, s, sma_fine, spectrum)
+    return (varianza, rango, s, spectrum)
                 
     
     
     
     
 #%%
-
-# pruebas de codigo
-
-data,senal_1= carga("/Usuario/Desktop/Señales/Respiratory_Sound_Database/audio_and_txt_files/102_1b1_Ar_sc_Meditron.wav", "/Usuario/Desktop/Señales/Respiratory_Sound_Database/audio_and_txt_files/102_1b1_Ar_sc_Meditron.txt")
-indexx= indices(senal_1[0], data, 22050)
-
-
-
-
 """
+# pruebas de codigo
+t, senal_1, sro= carga("/Usuario/Desktop/Señales/Respiratory_Sound_Database/audio_and_txt_files/102_1b1_Ar_sc_Meditron.wav", "/Usuario/Desktop/Señales/Respiratory_Sound_Database/audio_and_txt_files/102_1b1_Ar_sc_Meditron.txt")
+senal_1_filtrada= preproces(senal_1, sro)
+
+segmentos_1= segmento(senal_1_filtrada, t)
+indexx= indices(segmentos_1[0], sro)
+"""
+#%%
+
+info= pd.DataFrame(columns=('No. Paciente','No. ciclo','Inicio (muestra)', 'Fin (muestra)','Estertores', 'Sibilancias','Varianza', 'Rango','Promedio movil','Prom. Espectro'))
+
 path = "/Usuario/Desktop/Señales/Respiratory_Sound_Database/audio_and_txt_files"    # Recibe la ruta donde se encuentran los archivos de audio de interés
 archivos = os.listdir( path )    # lista los archivos de la ruta recibida en path
  
@@ -174,95 +154,210 @@ for i in range (len(archivos)):     # Seprara los archivos de audio y los de tex
         audio.append(archivos[i])
 
 
+#data,segmentos= carga(path+'/'+audio[1], path+'/'+texto[1])
+#info.append(data, ignore_index = True)
+#pd.concat([data, info])
+#info= pd.concat([info,data])
 
 
-
-
-for i in range(10):    # se cargan solo 10 señales para facilidad de trabajo
-    yo, sro = librosa.load('/Usuario/Desktop/Señales/Respiratory_Sound_Database/audio_and_txt_files/'+ audio[i]) #se cargn los audios contenidos en archivos con sus frecuencias de muestreo
-    signals.append(yo)
-    sr.append(sro)
+for i in range (len(audio)):
     
-txt=[]
-for i in range (10): # Se cargan los archivos .txt
-    file= open ('/Usuario/Desktop/Señales/Respiratory_Sound_Database/audio_and_txt_files/'+ texto[i])
-    data= np.loadtxt(file)
-    txt.append(data)
-"""
-
-
-
-"""
-
-sr=22050
-
-
-hop_length = 512
-n_fft = 2048
-D = np.abs(librosa.stft(c, n_fft=n_fft,hop_length=hop_length))
-
-librosa.display.specshow(D, sr=sr, x_axis='time', y_axis='linear');
-plt.colorbar();
-
-DB = librosa.amplitude_to_db(D, ref=np.max)
-librosa.display.specshow(DB, sr=sr, hop_length=hop_length, x_axis='time', y_axis='log');
-plt.colorbar(format='%+2.0f dB');
-
-
-plt.plot(signals[2])
-plt.plot(b)
+    data,senal,sro= carga(path+'/'+audio[i], path+'/'+texto[i])    # se cargan las senales de audio de la base de datos
+    #info= pd.concat([info,data])
     
-"""
+    senal_fil= preproces(senal,sro)        # Se filtran las senales de la base de datos
     
-   
+    segmentos= segmento(senal_fil, data)   # Se segmenta cada señal de la base...
     
-
-"""  
-
-
-# tiempo=np.arange(0, len(signals[0])/sro, 1/sro)     # Se crea vector de tiempo
+    data_index= pd.DataFrame(columns= ('Varianza', 'Rango', 'Promedio movil', 'Prom. Espectro', 'No. Paciente'))
+    for j in range (len(segmentos)):   # Calculo de los indices de cada ciclo de cada senal
+        index= indices (segmentos[j], sro)
+        new=pd.DataFrame({'Varianza': [index[0]], 'Rango':[index[1]],'Promedio movil':[index[2]], 'Prom. Espectro':[index[3]], 'No. Paciente':[i+1]}, columns=['Varianza', 'Rango', 'Promedio movil', 'Prom. Espectro', 'No. Paciente'])
+        data_index=pd.concat([data_index, new])
+        data_index.index=range(data_index.shape[0])
     
+    data=pd.concat([data,data_index], axis=1, )
+    info= pd.concat ([info,data])
+    info.index=range(info.shape[0])    # presenta el dataFrame con todos los datos de todos los segmentos de todas las señales de la base de datos
     
-# t=pd.DataFrame(columns=('Paciente No','Inicio', 'Fin'))     # Se crea un data Frame para organizar los tiempos de inicio y fin de cada ciclo de cada paciente
+#%%
+# Estadistica descriptiva
+
+estertor= info.sort_values(['Estertores','Sibilancias'])
+estertor.index=range(estertor.shape[0]) 
+estertor= estertor.drop(['Fin (muestra)', 'Inicio (muestra)', 'No. ciclo'], axis=1)  
+
+estertor_grupo_mean= estertor.groupby(['Estertores', 'Sibilancias'],as_index=False).mean()    
+estertor_grupo_var= estertor.groupby(['Estertores', 'Sibilancias'],as_index=False).var()   
+
+#Ciclos sin estertores y sin sibilancias
+estertor_0=estertor[(estertor['Estertores'] == 0) & (estertor['Sibilancias'] == 0)  ]
+
+count,bin_edges = np.histogram(estertor_0['Varianza'])
+estertor_0['Varianza'].plot(kind='hist',xticks=bin_edges, color='r')
+plt.xlabel('Varianza')
+plt.ylabel('No. de ciclos')
+plt.title('Varianza para ciclos que NO presentan estertores')
+plt.grid()
+plt.show()
+
+plt.figure()
+count,bin_edges = np.histogram(estertor_0['Rango'])
+estertor_0['Rango'].plot(kind='hist',xticks=bin_edges, color='m')
+plt.xlabel('Rango')
+plt.ylabel('No. de ciclos')
+plt.title('Rango para ciclos que NO presentan estertores')
+plt.grid()
+plt.show()
+
+plt.figure()
+count,bin_edges = np.histogram(estertor_0['Promedio movil'])
+estertor_0['Promedio movil'].plot(kind='hist',xticks=bin_edges)
+plt.xlabel('Promedio movil')
+plt.ylabel('No. de ciclos')
+plt.title('Promedio movil para ciclos que NO presentan estertores')
+plt.grid()
+plt.show()
+
+plt.figure()
+count,bin_edges = np.histogram(estertor_0['Prom. Espectro'])
+estertor_0['Prom. Espectro'].plot(kind='hist',xticks=bin_edges, color='g')
+plt.xlabel('Prom. Espectro')
+plt.ylabel('No. de ciclos')
+plt.title('Promedio movil para ciclos que NO presentan estertores')
+plt.grid()
+plt.show()
+
+# Ciclos con estertores
+estertor_1=estertor[(estertor['Estertores'] == 1)]
+plt.figure()
+count,bin_edges = np.histogram(estertor_1['Varianza'])
+estertor_1['Varianza'].plot(kind='hist',xticks=bin_edges)
+plt.xlabel('Varianza')
+plt.ylabel('No. ciclos')
+plt.title('Varianza para ciclos que presentan estertores')
+plt.grid()
+plt.show()
+
+plt.figure()
+count,bin_edges = np.histogram(estertor_1['Rango'])
+estertor_1['Rango'].plot(kind='hist',xticks=bin_edges, color='m')
+plt.xlabel('Rango')
+plt.ylabel('No. de ciclos')
+plt.title('Rango para ciclos que presentan estertores')
+plt.grid()
+plt.show()
+
+plt.figure()
+count,bin_edges = np.histogram(estertor_1['Promedio movil'])
+estertor_1['Promedio movil'].plot(kind='hist',xticks=bin_edges)
+plt.xlabel('Promedio movil')
+plt.ylabel('No. de ciclos')
+plt.title('Promedio movil para ciclos que presentan estertores')
+plt.grid()
+plt.show()
+
+plt.figure()
+count,bin_edges = np.histogram(estertor_1['Prom. Espectro'])
+estertor_1['Prom. Espectro'].plot(kind='hist',xticks=bin_edges, color='g')
+plt.xlabel('Prom. Espectro')
+plt.ylabel('No. de ciclos')
+plt.title('Promedio movil para ciclos que presentan estertores')
+plt.grid()
+plt.show()
+
+# Ciclos son sibilancias
+sibilancias_1=estertor[(estertor['Sibilancias'] == 1)]
+plt.figure()
+count,bin_edges = np.histogram(sibilancias_1['Varianza'])
+sibilancias_1['Varianza'].plot(kind='hist',xticks=bin_edges)
+plt.xlabel('Varianza')
+plt.ylabel('No. ciclos')
+plt.title('Varianza para ciclos que presentan estertores')
+plt.grid()
+plt.show()
+
+plt.figure()
+count,bin_edges = np.histogram(sibilancias_1['Rango'])
+sibilancias_1['Rango'].plot(kind='hist',xticks=bin_edges, color='m')
+plt.xlabel('Rango')
+plt.ylabel('No. de ciclos')
+plt.title('Rango para ciclos que presentan estertores')
+plt.grid()
+plt.show()
+
+plt.figure()
+count,bin_edges = np.histogram(sibilancias_1['Promedio movil'])
+sibilancias_1['Promedio movil'].plot(kind='hist',xticks=bin_edges)
+plt.xlabel('Promedio movil')
+plt.ylabel('No. de ciclos')
+plt.title('Promedio movil para ciclos que presentan estertores')
+plt.grid()
+plt.show()
+
+plt.figure()
+count,bin_edges = np.histogram(sibilancias_1['Prom. Espectro'])
+sibilancias_1['Prom. Espectro'].plot(kind='hist',xticks=bin_edges, color='g')
+plt.xlabel('Prom. Espectro')
+plt.ylabel('No. de ciclos')
+plt.title('Promedio movil para ciclos que presentan estertores')
+plt.grid()
+plt.show()
+
+#%%
+# Pruebas de hipótesis
+# Histohgramas para la varianza en los tres posibles casos para los ciclos
+plt.subplot(3,1,1)
+plt.hist(estertor_0['Varianza'],color='r', label='Sin sibilancias ni estertores')
+plt.legend()
+plt.title('Varianza')
+
+plt.subplot(3,1,2)
+plt.hist(estertor_1['Varianza'], color='c',label='Con estertores')
+plt.legend()
+
+plt.subplot(3,1,3)
+plt.hist(sibilancias_1['Varianza'], color='m',label='Con sibilancias')
+plt.legend()
+
+# Comparacion para la varianza
+print('Varianza entre ciclos con estertores y sin estertores ni sibilancias:')
+print(mannwhitneyu(estertor_0['Varianza'], estertor_1['Varianza'] ))
+
+print('Varianza entre ciclos con sibilancias y sin estertores ni sibilancias:')
+print(mannwhitneyu(estertor_0['Varianza'], sibilancias_1['Varianza'] ))
+
+print('Varianza entre ciclos con estertores y ciclos con sibilancias:')
+print(mannwhitneyu(sibilancias_1['Varianza'], estertor_1['Varianza'] ))
+
+# comparacion para el rango
+print('Rango entre ciclos con estertores y sin estertores ni sibilancias:')
+print(mannwhitneyu(estertor_0['Rango'], estertor_1['Rango'] ))
+
+print('Rango entre ciclos con sibilancias y sin estertores ni sibilancias:')
+print(mannwhitneyu(estertor_0['Rango'], sibilancias_1['Rango'] ))
+
+print('Rango entre ciclos con estertores y ciclos con sibilancias:')
+print(mannwhitneyu(sibilancias_1['Rango'], estertor_1['Rango'] ))
+
+#comparacion para el promedio movil
+print('Promedio movil entre ciclos con estertores y sin estertores ni sibilancias:')
+print(mannwhitneyu(estertor_0['Promedio movil'], estertor_1['Promedio movil'] ))
+
+print('Promedio movil entre ciclos con sibilancias y sin estertores ni sibilancias:')
+print(mannwhitneyu(estertor_0['Promedio movil'], sibilancias_1['Promedio movil'] ))
+
+print('Promedio movil entre ciclos con estertores y ciclos con sibilancias:')
+print(mannwhitneyu(sibilancias_1['Promedio movil'], estertor_1['Promedio movil'] ))
+
+# comparacion para el promedio del espectro
+print('Promedio de espectro entre ciclos con estertores y sin estertores ni sibilancias:')
+print(mannwhitneyu(estertor_0['Prom. Espectro'], estertor_1['Promedio movil'] ))
+
+print('Promedio de espectro entre ciclos con sibilancias y sin estertores ni sibilancias:')
+print(mannwhitneyu(estertor_0['Prom. Espectro'], sibilancias_1['Promedio movil'] ))
+
+print('Promedio de espectro entre ciclos con estertores y ciclos con sibilancias:')
+print(mannwhitneyu(sibilancias_1['Prom. Espectro'], estertor_1['Promedio movil'] ))
 
 
-
-for i in range(10):
-    for j in range (np.shape(txt[i])[0]):
-        ti= txt[i][j][0]*22050
-        tf= txt[i][j][1]*22050
-        
-        t.loc[len(t)]=[i+1,ti,tf]
-        
-segmentos=[]
-
-for j in range (10):     # Se segmenta cada señal de audio en cada ciclo segun su punto de inicio y fin
-    
-    for i in range(np.shape(txt[j])[0]):     #recorrer ciclos
-        segmento=signals[j][int(t.loc[i][1]):int(t.loc[i][2])]
-        segmentos.append(segmento)
-    
-for i in range (10):   # permite guardar un audio
-    librosa.output.write_wav('audio'+str(i)+'.wav', segmentos[i], 22050)
-        
-        
-# Filtrado
-signal_hp=[]
-signal_lp=[] 
-
-
- 
-
-# order, lowpass = filter_design(fs, locutoff = 0, hicutoff = 4100, revfilt = 0)
-
-    
-
-for i in range (10):
-    librosa.output.write_wav('audio_filtrado'+str(i)+'.wav', signal_hp[i], 22050)
-    
-
-"""
-    
-    
-    
-    
